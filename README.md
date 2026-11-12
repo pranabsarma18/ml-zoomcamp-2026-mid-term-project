@@ -2,6 +2,10 @@
 
 A machine learning project from the [DataTalks.Club Machine Learning Zoomcamp](https://github.com/DataTalksClub/machine-learning-zoomcamp/tree/main/projects). It trains a binary classifier on the Indian Student Depression Dataset and serves predictions through a FastAPI web service.
 
+**Live Fly.io app (configured URL):** [https://crimson-skylark-7823.fly.dev](https://crimson-skylark-7823.fly.dev) · [Interactive API docs](https://crimson-skylark-7823.fly.dev/docs) · [OpenAPI schema](https://crimson-skylark-7823.fly.dev/openapi.json)
+
+> The Fly.io app name and hostname are taken from `fly.toml`. The public endpoint could not be reached during this README update, so its current availability has not been verified. If it is sleeping, give Fly.io a moment to start it and retry.
+
 > **Educational use only.** The prediction estimates a dataset label; it is not a mental health assessment, diagnosis, or recommendation for care. Do not use it to make decisions about an individual student. The data contains sensitive information and model outputs can be wrong or biased.
 
 ## Problem and intended use
@@ -45,27 +49,46 @@ The saved notebook results select Logistic Regression with `C=1`. Its mean five-
 └── Dockerfile                                # Container image for the API
 ```
 
+## How a prediction is produced
+
+![Project flow from student features through preprocessing and the trained classifier to the FastAPI response](docs/project-flow.svg)
+
+The request schema validates the supplied values, `predict.py` converts the request into a one-row table and normalizes the sleep-duration value, then the fitted scikit-learn pipeline applies imputation, scaling and one-hot encoding before returning a probability and a thresholded class. The service exposes `GET /` and `POST /predict`; FastAPI also serves its interactive schema at `/docs`.
+
 ## Requirements
 
 - Python **3.14** (version is recorded in `.python-version`)
 - [`uv`](https://docs.astral.sh/uv/) for creating the environment and installing the locked dependencies
 - Docker, if you want to run the containerized API
 
+### Install `uv`
+
+If `uv` is not installed, follow the [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/) for your operating system. Confirm it is available, then move to the repository root:
+
+```bash
+uv --version
+cd ml-zoomcamp-2026-mid-term-project
+```
+
+Use a Python 3.14 installation. `uv` can use an installed interpreter or download one when needed.
+
 ## Run locally
 
-From the repository root, install `uv` if it is not already available, then create the project environment from the lock file:
+From the repository root, create the virtual environment and install exactly the versions recorded in `uv.lock`:
 
 ```bash
 uv sync --locked
 ```
 
-This installs the project dependencies and development dependency (`requests`, used by the example client) into `.venv`. Run the API with:
+This creates `.venv` and installs the project plus its development dependency (`requests`, used by the example client). Start the API:
 
 ```bash
 uv run uvicorn predict:app --host 0.0.0.0 --port 9696
 ```
 
 The service listens on port `9696`. Open `http://localhost:9696/` for the service message or `http://localhost:9696/docs` for the interactive Swagger UI.
+
+To stop the server, press `Ctrl+C` in the terminal where it is running. If port 9696 is already in use, stop the other process or change the port consistently in the run command and the URL used by the client.
 
 ### Send a prediction request
 
@@ -120,6 +143,8 @@ uv run python train.py
 
 The script reads `dataset/student-depression-full-train.csv`, fits preprocessing and Logistic Regression, and overwrites `model.bin`. The API loads `model.bin` at prediction time. The notebook contains the fuller model-selection workflow; `train.py` is the compact script for producing the serving artifact.
 
+To reproduce the analysis, launch Jupyter in the same environment (`uv run jupyter lab`) if Jupyter is installed, or open the notebook in an IDE that supports `.ipynb` files. Execute `student-depression-notebook-correct-workflow.ipynb` from top to bottom. It uses the source CSV and writes the derived split CSV files under `dataset/`. The API is served from the committed `model.bin`; rerun training after changing training data or code, then restart the API to use the newly written artifact.
+
 ## Run with Docker
 
 Build the image from the repository root:
@@ -136,9 +161,22 @@ docker run --rm -p 9696:9696 student-depression-api
 
 The API is then available at `http://localhost:9696/`, with interactive documentation at `http://localhost:9696/docs`. Send the same `curl` request shown above to `http://localhost:9696/predict`.
 
-## Deployment
+The container includes the locked runtime dependencies, `predict.py`, and `model.bin`. To stop it, press `Ctrl+C` (or stop the container from another terminal). To rebuild after changing the model or service code, run the build command again and start a new container.
 
-The repository includes a Fly.io configuration (`fly.toml`) and a GitHub Actions workflow (`.github/workflows/fly-deploy.yml`). They are deployment scaffolding; deployment requires a configured Fly.io app and credentials. Set up the provider account and secret as described in the workflow before using it. A live URL is not documented here because this repository does not specify a verified public endpoint.
+## Deploy to Fly.io
+
+The configured application name is `crimson-skylark-7823` in `fly.toml`, which gives the app the hostname `https://crimson-skylark-7823.fly.dev`. This project also has a GitHub Actions workflow that deploys on pushes to `main` or `master` using the `FLY_API_TOKEN` repository secret.
+
+For a manual deployment, install and sign in to [`flyctl`](https://fly.io/docs/flyctl/install/), then run these commands from the repository root:
+
+```bash
+fly auth login
+fly status --app crimson-skylark-7823
+fly deploy --app crimson-skylark-7823
+fly status --app crimson-skylark-7823
+```
+
+`fly.toml` configures Fly.io to route HTTPS traffic to port `9696`, where Uvicorn listens inside the container. After deployment, check `https://crimson-skylark-7823.fly.dev/` and `/docs`. For automated deploys, add a Fly API token to the GitHub repository as an Actions secret named `FLY_API_TOKEN`. Fly deployments may incur charges depending on current account terms and machine usage; stop or destroy resources using Fly.io's current guidance when finished.
 
 ## Limitations
 
