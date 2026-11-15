@@ -1,98 +1,150 @@
+<div align="center">
+
 # Student Depression Classification
 
-A machine learning project from the [DataTalks.Club Machine Learning Zoomcamp](https://github.com/DataTalksClub/machine-learning-zoomcamp/tree/main/projects). It trains a binary classifier on the Indian Student Depression Dataset and serves predictions through a FastAPI web service.
+### A reproducible machine-learning API for an educational classification project
 
-**Live Fly.io app (configured URL):** [https://crimson-skylark-7823.fly.dev](https://crimson-skylark-7823.fly.dev) · [Interactive API docs](https://crimson-skylark-7823.fly.dev/docs) · [OpenAPI schema](https://crimson-skylark-7823.fly.dev/openapi.json)
+[![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)](.python-version)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](predict.py)
+[![scikit-learn](https://img.shields.io/badge/scikit--learn-Model-F7931E?logo=scikitlearn&logoColor=white)](train.py)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](Dockerfile)
 
-> The Fly.io app name and hostname are taken from `fly.toml`. The public endpoint could not be reached during this README update, so its current availability has not been verified. If it is sleeping, give Fly.io a moment to start it and retry.
+[Live API](https://crimson-skylark-7823.fly.dev) · [API documentation](https://crimson-skylark-7823.fly.dev/docs) · [OpenAPI schema](https://crimson-skylark-7823.fly.dev/openapi.json) · [Notebook](student-depression-notebook-correct-workflow.ipynb)
 
-> **Educational use only.** The prediction estimates a dataset label; it is not a mental health assessment, diagnosis, or recommendation for care. Do not use it to make decisions about an individual student. The data contains sensitive information and model outputs can be wrong or biased.
+</div>
 
-## Problem and intended use
+> [!IMPORTANT]
+> This is an educational project. It estimates a label in the source dataset; it does **not** provide a mental-health assessment, diagnosis, or care recommendation. Do not use an individual prediction to make decisions about a student.
 
-The dataset includes demographic, academic, work, and lifestyle fields for students in India. The model estimates the probability that a record has `depression = 1` in the source dataset. This project demonstrates an end-to-end machine learning workflow: data exploration, model comparison, training, packaging, and local API deployment. It is not intended for real-world screening or intervention.
+## At a glance
 
-The notebook excludes `suicidal_thoughts` from model features because it is sensitive and closely associated with the target. The serving API does not ask for this field. The record identifier (`id`) is also excluded.
+| | |
+| --- | --- |
+| **Task** | Binary classification: estimate the dataset label `depression` |
+| **Data** | Indian Student Depression Dataset · 27,901 records · 18 columns |
+| **Final model** | Logistic Regression (`C=1`) with a fitted preprocessing pipeline |
+| **Evaluation** | Test ROC-AUC: **0.875** · Test accuracy: **0.803** |
+| **Service** | FastAPI · `POST /predict` · Docker · Fly.io |
+
+## Contents
+
+- [Problem](#problem)
+- [Results](#results)
+- [Project flow](#project-flow)
+- [Repository layout](#repository-layout)
+- [Run locally](#run-locally)
+- [Make a prediction](#make-a-prediction)
+- [Retraining and analysis](#retraining-and-analysis)
+- [Docker](#docker)
+- [Manual Fly.io deployment](#manual-flyio-deployment)
+- [Limitations](#limitations)
+
+---
+
+## Problem
+
+This project explores whether demographic, academic, work, and lifestyle fields can predict the `depression` label supplied with a student record. It is a complete Machine Learning Zoomcamp workflow: exploratory analysis, model comparison, model export, a web API, and containerized deployment.
+
+Two fields are deliberately excluded from the deployed model:
+
+- `id` is an identifier, so it has no predictive role.
+- `suicidal_thoughts` is highly sensitive and closely related to the target label. The API does not ask for it and the model does not use it.
 
 ## Dataset
 
-The repository includes the source data and the fixed train/test split used for the final model:
+The repository contains the original data and the fixed splits used for training and evaluation, so the project can be run without a separate download.
 
-| File | Contents |
-| --- | --- |
-| `dataset/Student Depression Dataset.csv` | Original dataset (27,901 rows, 18 columns) used in the notebook |
-| `dataset/student-depression-full-train.csv` | Training portion used by `train.py` (22,320 rows) |
-| `dataset/student-depression-test.csv` | Held-out test portion created by the notebook (5,581 rows) |
+| File | Rows | Purpose |
+| --- | ---: | --- |
+| `Student Depression Dataset.csv` | 27,901 | Original source dataset used in the notebook |
+| `student-depression-full-train.csv` | 22,320 | Final model training data |
+| `student-depression-test.csv` | 5,581 | Held-out evaluation data |
 
-The target is `depression`. The notebook standardizes column names and categorical text and converts sleep-duration ranges to numeric midpoints. The split preserves the target proportions. Missing values are handled in the model pipeline. The dataset is committed in this repository, so no separate download is required to reproduce the notebook or training script.
+The notebook standardizes text and column names, converts sleep-duration ranges to numeric midpoints, and fits missing-value handling within the model pipeline. The dataset is observational, so its labels, collection process, and population may limit how well results generalize.
 
-The dataset is an observational source dataset, not a clinical cohort. Its labels, population, collection process, and feature distributions may limit how well the results generalize. Associations in the data do not imply causes.
+## Results
 
-## Exploration and model selection
+The notebook evaluates Logistic Regression, Decision Tree, and Random Forest models. Hyperparameters are chosen with a validation split, then the selected configurations are compared using stratified five-fold cross-validation.
 
-Run `student-depression-notebook-correct-workflow.ipynb` for the data cleaning, exploratory analysis, feature analysis, model comparison, hyperparameter selection, and held-out test evaluation. The notebook compares Logistic Regression, Decision Tree, and Random Forest models. It tunes model parameters using a validation set, compares selected configurations with stratified five-fold cross-validation, and reports performance on the held-out test split.
+| Model | Selected configuration | Mean 5-fold ROC-AUC |
+| --- | --- | ---: |
+| **Logistic Regression** | `C=1` | **0.870 ± 0.003** |
+| Random Forest | `n_estimators=500`, `max_depth=15`, `min_samples_leaf=2` | 0.867 ± 0.003 |
+| Decision Tree | `max_depth=7`, `min_samples_leaf=50` | 0.846 ± 0.003 |
 
-The saved notebook results select Logistic Regression with `C=1`. Its mean five-fold training-split ROC-AUC is **0.870 ± 0.003**, and its held-out test ROC-AUC is **0.875** (test accuracy **0.803** at a 0.5 threshold). These are results on this dataset split, not guarantees of future performance.
+The selected Logistic Regression model is trained on the full training split and evaluated once on the held-out test set: **ROC-AUC 0.875** and **accuracy 0.803** at a 0.5 decision threshold.
 
-## Project files
+## Project flow
+
+![Diagram showing student records flowing through preprocessing, Logistic Regression, and the FastAPI service](docs/project-flow.svg)
+
+1. The notebook cleans the source data, explores it, and creates reproducible train/test splits.
+2. The fitted scikit-learn pipeline imputes missing values, scales numeric fields, and one-hot encodes categories.
+3. `train.py` saves the fitted pipeline as `model.bin`.
+4. `predict.py` validates JSON input and returns a probability plus a thresholded prediction.
+
+## Repository layout
 
 ```text
 .
-├── dataset/                                  # Source data and train/test splits
+├── dataset/
+│   ├── Student Depression Dataset.csv         # Source dataset
+│   ├── student-depression-full-train.csv      # Final training split
+│   └── student-depression-test.csv            # Held-out test split
+├── docs/project-flow.svg                      # Architecture diagram
 ├── student-depression-notebook-correct-workflow.ipynb
-├── train.py                                  # Fits the serving pipeline and writes model.bin
-├── model.bin                                 # Serialized fitted scikit-learn pipeline
-├── predict.py                                # FastAPI application and input validation
-├── predict-simple.py                         # Optional example HTTP client
-├── pyproject.toml                            # Project dependencies and metadata
-├── uv.lock                                   # Locked dependency versions
-└── Dockerfile                                # Container image for the API
+├── train.py                                   # Train and export model.bin
+├── predict.py                                 # FastAPI application
+├── predict-simple.py                          # Example API client
+├── model.bin                                  # Fitted scikit-learn pipeline
+├── Dockerfile                                 # Production container image
+├── fly.toml                                   # Fly.io configuration
+├── pyproject.toml                             # Python dependencies
+└── uv.lock                                    # Locked dependency versions
 ```
 
-## How a prediction is produced
+## Run locally
 
-![Project flow from student features through preprocessing and the trained classifier to the FastAPI response](docs/project-flow.svg)
+### 1. Prerequisites
 
-The request schema validates the supplied values, `predict.py` converts the request into a one-row table and normalizes the sleep-duration value, then the fitted scikit-learn pipeline applies imputation, scaling and one-hot encoding before returning a probability and a thresholded class. The service exposes `GET /` and `POST /predict`; FastAPI also serves its interactive schema at `/docs`.
+- Python **3.14**
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
+- Docker, only if you want to use the container workflow
 
-## Requirements
-
-- Python **3.14** (version is recorded in `.python-version`)
-- [`uv`](https://docs.astral.sh/uv/) for creating the environment and installing the locked dependencies
-- Docker, if you want to run the containerized API
-
-### Install `uv`
-
-If `uv` is not installed, follow the [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/) for your operating system. Confirm it is available, then move to the repository root:
+Confirm that `uv` is available, then enter the cloned repository:
 
 ```bash
 uv --version
 cd ml-zoomcamp-2026-mid-term-project
 ```
 
-Use a Python 3.14 installation. `uv` can use an installed interpreter or download one when needed.
-
-## Run locally
-
-From the repository root, create the virtual environment and install exactly the versions recorded in `uv.lock`:
+### 2. Install the locked environment
 
 ```bash
 uv sync --locked
 ```
 
-This creates `.venv` and installs the project plus its development dependency (`requests`, used by the example client). Start the API:
+This creates `.venv` and installs the exact locked dependency versions. The committed `model.bin` is ready to serve; you do not need to retrain before starting the API.
+
+### 3. Start the API
 
 ```bash
 uv run uvicorn predict:app --host 0.0.0.0 --port 9696
 ```
 
-The service listens on port `9696`. Open `http://localhost:9696/` for the service message or `http://localhost:9696/docs` for the interactive Swagger UI.
+Open one of these URLs in your browser:
 
-To stop the server, press `Ctrl+C` in the terminal where it is running. If port 9696 is already in use, stop the other process or change the port consistently in the run command and the URL used by the client.
+| URL | Purpose |
+| --- | --- |
+| `http://localhost:9696/` | Basic service response |
+| `http://localhost:9696/docs` | Interactive Swagger UI |
+| `http://localhost:9696/openapi.json` | Machine-readable API schema |
 
-### Send a prediction request
+Press `Ctrl+C` in the terminal to stop the server.
 
-`POST /predict` accepts a JSON object with these fields. `gender`, `dietary_habits`, `family_history_of_mental_illness`, and `degree` are constrained to values listed by the API schema; see `/docs` for the full allowed `degree` set.
+## Make a prediction
+
+With the server running, send a `POST` request to `/predict`:
 
 ```bash
 curl -X POST http://localhost:9696/predict \
@@ -116,8 +168,6 @@ curl -X POST http://localhost:9696/predict \
   }'
 ```
 
-Example response:
-
 ```json
 {
   "depression_probability": 0.64,
@@ -125,49 +175,49 @@ Example response:
 }
 ```
 
-The probability and prediction above are illustrative; actual output depends on the bundled model. The class is `1` when the estimated probability is at least `0.5`, otherwise `0`. Invalid fields or values return a validation error. `age` must be between 18 and 59; pressure, satisfaction, CGPA, and financial-stress values are range-checked by the API. Sleep duration should contain a number or numeric range (for example, `7-8_hours`).
+The response above is an example. `depression_prediction` is `1` when the estimated probability is at least `0.5`; otherwise it is `0`. The API validates required fields and ranges. Use `/docs` to inspect accepted categorical values, including the full `degree` list.
 
-You can also run the included Python client while the API is running:
+An example client is also included:
 
 ```bash
 uv run python predict-simple.py
 ```
 
-## Retrain the model
+## Retraining and analysis
 
-With dependencies installed, run from the repository root:
+### Train the serving artifact
 
 ```bash
 uv run python train.py
 ```
 
-The script reads `dataset/student-depression-full-train.csv`, fits preprocessing and Logistic Regression, and overwrites `model.bin`. The API loads `model.bin` at prediction time. The notebook contains the fuller model-selection workflow; `train.py` is the compact script for producing the serving artifact.
+This reads `dataset/student-depression-full-train.csv` and overwrites `model.bin`. Restart the API after retraining so it loads the new model.
 
-To reproduce the analysis, launch Jupyter in the same environment (`uv run jupyter lab`) if Jupyter is installed, or open the notebook in an IDE that supports `.ipynb` files. Execute `student-depression-notebook-correct-workflow.ipynb` from top to bottom. It uses the source CSV and writes the derived split CSV files under `dataset/`. The API is served from the committed `model.bin`; rerun training after changing training data or code, then restart the API to use the newly written artifact.
+### Reproduce the notebook
 
-## Run with Docker
+Open [student-depression-notebook-correct-workflow.ipynb](student-depression-notebook-correct-workflow.ipynb) in VS Code, Jupyter, or another notebook-capable editor and run it from top to bottom. It performs data preparation, EDA, feature analysis, tuning, cross-validation, final evaluation, and writes the fixed train/test splits under `dataset/`.
 
-Build the image from the repository root:
+## Docker
+
+Build the image:
 
 ```bash
 docker build -t student-depression-api .
 ```
 
-Start the container and publish its API port:
+Start the container:
 
 ```bash
 docker run --rm -p 9696:9696 student-depression-api
 ```
 
-The API is then available at `http://localhost:9696/`, with interactive documentation at `http://localhost:9696/docs`. Send the same `curl` request shown above to `http://localhost:9696/predict`.
+The API will be available at `http://localhost:9696/docs`. Stop it with `Ctrl+C`. Rebuild the image after changing `predict.py` or `model.bin`.
 
-The container includes the locked runtime dependencies, `predict.py`, and `model.bin`. To stop it, press `Ctrl+C` (or stop the container from another terminal). To rebuild after changing the model or service code, run the build command again and start a new container.
+## Manual Fly.io deployment
 
-## Deploy to Fly.io
+The configured Fly.io application is [`crimson-skylark-7823`](https://crimson-skylark-7823.fly.dev). Deployment is manual; pushes to GitHub do not deploy the service.
 
-The configured application name is `crimson-skylark-7823` in `fly.toml`, which gives the app the hostname `https://crimson-skylark-7823.fly.dev`. This project also has a GitHub Actions workflow that deploys on pushes to `main` or `master` using the `FLY_API_TOKEN` repository secret.
-
-For a manual deployment, install and sign in to [`flyctl`](https://fly.io/docs/flyctl/install/), then run these commands from the repository root:
+Install [`flyctl`](https://fly.io/docs/flyctl/install/), sign in, and run these commands from the repository root:
 
 ```bash
 fly auth login
@@ -176,18 +226,16 @@ fly deploy --app crimson-skylark-7823
 fly status --app crimson-skylark-7823
 ```
 
-`fly.toml` configures Fly.io to route HTTPS traffic to port `9696`, where Uvicorn listens inside the container. After deployment, check `https://crimson-skylark-7823.fly.dev/` and `/docs`. For automated deploys, add a Fly API token to the GitHub repository as an Actions secret named `FLY_API_TOKEN`. Fly deployments may incur charges depending on current account terms and machine usage; stop or destroy resources using Fly.io's current guidance when finished.
+Fly.io routes HTTPS traffic to port `9696` as configured in `fly.toml`. After a successful deploy, visit [the live API](https://crimson-skylark-7823.fly.dev) or [its interactive docs](https://crimson-skylark-7823.fly.dev/docs).
 
 ## Limitations
 
-- The target reflects labels in one dataset; it is not a diagnosis and may include label noise.
-- The dataset has more positive than negative target labels (about 58.6% positive), and model performance depends on this dataset and split.
-- The records are observational, and the dataset may not represent other student populations or current conditions.
-- The model uses demographic and other potentially sensitive attributes. Avoid using individual predictions to guide consequential decisions.
-- The API's 0.5 threshold is a simple default, not a clinically or operationally validated decision threshold.
+- The target is a source-dataset label, not a diagnosis, and may contain label noise.
+- The data is observational and may not represent students in other populations or settings.
+- The positive class is about 58.6% of the dataset, and performance depends on this particular split.
+- Correlations in the data should not be interpreted as causes.
+- The default 0.5 threshold is not clinically or operationally validated.
 
-## Reproducibility and project guidance
+## Project guidance
 
-The data, notebook, training code, saved model, dependency lock file, API, and Dockerfile are included to support review from a fresh checkout. To inspect the analysis, open the notebook in Jupyter; to exercise the service, follow the local or Docker instructions above.
-
-This README follows the Machine Learning Zoomcamp [project deliverables and evaluation guidance](https://github.com/DataTalksClub/machine-learning-zoomcamp/tree/main/projects) and [project tips and checklist](https://github.com/DataTalksClub/machine-learning-zoomcamp/blob/main/projects/project-tips.md).
+This project follows the [Machine Learning Zoomcamp project deliverables](https://github.com/DataTalksClub/machine-learning-zoomcamp/tree/main/projects) and [project tips and checklist](https://github.com/DataTalksClub/machine-learning-zoomcamp/blob/main/projects/project-tips.md).
