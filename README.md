@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/project-banner.webp" alt="Student Depression Classification project banner" width="100%">
+<img src="assets/Student Depression Classification Banner.png" alt="Student Depression Classification project banner" width="100%">
 
 # Student Depression Classification
 
