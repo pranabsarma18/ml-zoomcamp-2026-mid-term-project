@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/project-banner.webp" alt="Student Depression Classification project banner" width="100%">
+
 # Student Depression Classification
 
 ### A reproducible machine-learning API for an educational classification project
